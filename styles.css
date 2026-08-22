@@ -353,6 +353,102 @@ nav .container {
     line-height: 1.6;
 }
 
+/* Awards & Recognition Section */
+.awards {
+    padding: 80px 20px;
+    background: var(--white);
+}
+
+.awards h2 {
+    text-align: center;
+    font-size: 2.5rem;
+    margin-bottom: 1rem;
+    color: var(--text-dark);
+}
+
+.awards-intro {
+    text-align: center;
+    max-width: 700px;
+    margin: 0 auto 3rem;
+    color: var(--text-light);
+    font-size: 1.05rem;
+    line-height: 1.7;
+}
+
+.awards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 1.5rem;
+    max-width: 1100px;
+    margin: 0 auto;
+}
+
+.award-card {
+    background: var(--bg-light);
+    padding: 2rem;
+    border-radius: 8px;
+    text-align: center;
+    border: 1px solid #e5e7eb;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.award-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+}
+
+.award-medal {
+    font-size: 2.75rem;
+    margin-bottom: 0.75rem;
+}
+
+.award-card h3 {
+    font-size: 1.15rem;
+    color: var(--text-dark);
+    margin-bottom: 0.5rem;
+    line-height: 1.4;
+}
+
+.award-category {
+    font-size: 0.95rem;
+    color: var(--text-light);
+    margin-bottom: 0.5rem;
+}
+
+.award-tier {
+    font-size: 0.85rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: var(--primary-color);
+    margin-bottom: 1.25rem;
+}
+
+.judge-card {
+    border: 1px solid #fde68a;
+    background: #fffbeb;
+}
+
+.judge-card .award-tier {
+    color: #b45309;
+}
+
+.award-verify {
+    display: inline-block;
+    padding: 8px 18px;
+    background: var(--primary-color);
+    color: var(--white);
+    text-decoration: none;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    transition: background 0.3s ease;
+}
+
+.award-verify:hover {
+    background: var(--secondary-color);
+}
+
 /* Contact Section */
 .contact {
     padding: 80px 20px;
