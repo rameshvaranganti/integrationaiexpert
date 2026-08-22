@@ -57,5 +57,13 @@ document.querySelectorAll('.service-card').forEach(card => {
     observer.observe(card);
 });
 
+// Observe award cards
+document.querySelectorAll('.award-card').forEach(card => {
+    card.style.opacity = '0';
+    card.style.transform = 'translateY(20px)';
+    card.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
+    observer.observe(card);
+});
+
 // Mobile menu toggle (if needed in future)
 console.log('Integration AI Assistant - Website Loaded Successfully');
