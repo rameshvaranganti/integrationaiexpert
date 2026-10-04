@@ -2,7 +2,7 @@ Privacy Policy
 Plugin: GroovyCodex for SAP CPI
 Publisher: Rameshkumar Varanganti
 Effective date: October 4, 2026
-Status: Draft for publisher review.
+Status: publisher review.
 1. Scope
 This policy describes the privacy practices of the GroovyCodex for SAP CPI plugin (the “Plugin”), which helps users create, explain, review, and troubleshoot Groovy scripts for SAP Integration Suite Cloud Integration.
 The Plugin is currently a skills-only assistant. It does not connect to an SAP tenant, execute scripts, or operate a separate server, database, or external integration.
