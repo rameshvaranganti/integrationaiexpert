@@ -1,4 +1,4 @@
-Privacy Policy Draft
+Privacy Policy 
 Plugin: GroovyCodex for SAP CPI
 Publisher: Rameshkumar Varanganti
 Effective date: October 4, 2026
