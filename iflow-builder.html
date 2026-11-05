@@ -182,7 +182,7 @@ footer a{color:var(--accent)}
 <header class="top">
   <div class="wrap">
     <div class="topact">
-      <a class="claude" id="claudeLink" hidden target="_blank" rel="noopener" title="Opens this builder on claude.ai. Sign in with your own Claude account (free or paid) for free-form AI design and changes.">Sign in with Claude for AI mode ↗</a>
+      <a class="claude" id="claudeLink" hidden target="_blank" rel="noopener" title="Opens this builder on claude.ai. Be signed in to claude.ai in this browser (free or paid account) for free-form AI design and changes; it uses your own plan.">Open in Claude (AI mode) ↗</a>
       <div class="theme" role="group" aria-label="Theme"><button type="button" data-th="auto" aria-pressed="true">System</button><button type="button" data-th="light" aria-pressed="false">Light</button><button type="button" data-th="dark" aria-pressed="false">Dark</button></div>
     </div>
     <div class="brand">
@@ -2217,7 +2217,9 @@ let aiAvailable = false;
 sampleP.then((s) => {
   aiAvailable = !!s;
   if (s) { $("#aiNote").textContent = "Claude changes only what you ask; Undo restores the previous design."; $("#errAi").hidden = false; }
-  else { $("#aiNote").innerHTML = "Offline mode, no sign-in: <b>Start a new design</b> understands systems/adapters, timers, converters, mapping, Groovy, splitters, router, multicast, PGP/PKCS#7, Base64/ZIP, Data Store and exception handling. <b>Update</b> understands exception handling and payload logging." + (STANDALONE ? ` For any free-form change, <a href="${CLAUDE_URL}" target="_blank" rel="noopener">open in Claude</a> (sign in, uses your own Claude plan).` : ""); }
+  else { $("#aiNote").innerHTML = "<b>Offline mode</b> (no Claude sign-in): understands adapters, timers, converters, mapping, Groovy, splitters, router, multicast, PGP/PKCS#7, Base64/ZIP, Data Store, success/error ends and JSON/XML error responses, add/remove steps, change sender/receiver. " +
+      (STANDALONE ? `For any free-form request, <a href="${CLAUDE_URL}" target="_blank" rel="noopener">open in Claude</a> while signed in (uses your own Claude plan).`
+                  : `For any free-form request: <a href="https://claude.ai/login" target="_blank" rel="noopener">sign in to claude.ai</a> in this browser, then reopen this link (AI mode uses your own Claude plan; private/incognito windows are not signed in).`); }
 });
 function aiResult(kind, html) {
   const r = $("#aiResult"); r.hidden = false;
@@ -2227,22 +2229,73 @@ function aiResult(kind, html) {
 }
 function validSpec(spec) { try { CPI.generate(spec, state.profiles); return null; } catch (e) { return e.message || String(e); } }
 // offline interpreter for common change requests (used when Claude isn't available)
-function localEdit(text, spec) {
-  const t = text.toLowerCase(), out = JSON.parse(JSON.stringify(spec)), did = [];
+function localEdit(text, spec, exceptionOnly) {
+  const t = " " + text.toLowerCase().replace(/\s+/g, " ") + " ", out = JSON.parse(JSON.stringify(spec)), did = [];
   const statusM = t.match(/\b([45]\d\d)\b/);
-  if (/exception|error|fail/.test(t)) {
+  const successEnd = /\bsuccess\w*\s+end|\bend\w*\s+(?:with\s+|as\s+|in\s+)?(?:a\s+)?success|\bmessage end|\bend normal|\bnormal end|\bcomplete\w*\s+success|\bnot fail|\bdon'?t fail|\bdo not fail|\bhandled\b/;
+  if (/exception|error|fail|fault/.test(t) || successEnd.test(t) || /escalat/.test(t)) {
     if (/escalat/.test(t)) { out.exception = { end: "escalation" }; did.push("exception subprocess ends with Escalation End"); }
-    else if (/success|successful|message end|end normal|complete|normal end|not fail|don't fail|do not fail/.test(t) || /json|xml/.test(t)) {
-      const em = t.match(/(?:error|exception|fault)\w*[^.;]{0,40}?\b(json|xml)\b|\b(json|xml)\b[^.;]{0,15}?(?:error|exception|fault)/);
-      const response = em ? (em[1] || em[2]) : /json/.test(t) ? "json" : /xml/.test(t) ? "xml" : /status|http code|response code/.test(t) ? "status" : "none";
+    else if (successEnd.test(t) || /\b(json|xml)\b[^.;]{0,25}(?:error|exception|fault|response|back)|(?:error|exception|fault)\w*[^.;]{0,40}?\b(json|xml)\b|status code|http status|response code/.test(t)) {
+      const em = t.match(/(?:error|exception|fault)\w*[^.;]{0,40}?\b(json|xml)\b|\b(json|xml)\b[^.;]{0,25}?(?:error|exception|fault|response|back)/);
+      const response = em ? (em[1] || em[2]) : /\bjson\b/.test(t) ? "json" : /\bxml\b/.test(t) ? "xml" : /status|http code|response code/.test(t) ? "status" : ((spec.exception || {}).response || "none");
       out.exception = { end: "message", response };
       if (response !== "none") out.exception.http_status = statusM ? +statusM[1] : ((spec.exception || {}).http_status || 500);
       did.push(`exception subprocess ends successfully (Message End)` + (response !== "none" ? ` and returns ${response === "status" ? "only the HTTP status" : "a " + response.toUpperCase() + " error body"} with HTTP ${out.exception.http_status}` : ""));
-    } else if (/error end|fail the message|mark .*failed/.test(t)) { delete out.exception; did.push("exception subprocess ends with Error End"); }
+    } else if (/error end|fail the message|mark .*failed|\bfailed status|\bdefault\b/.test(t)) { delete out.exception; did.push("exception subprocess ends with Error End"); }
+    else if (statusM && out.exception) { out.exception.http_status = +statusM[1]; did.push("error HTTP status " + statusM[1]); }
   }
-  if (/payload logging|log payload|logging/.test(t)) {
-    if (/(disable|turn off|remove|no |without)/.test(t)) { out.payload_logging = false; did.push("payload logging steps removed"); }
-    else if (/(enable|turn on|add|with )/.test(t)) { out.payload_logging = true; did.push("switchable payload logging added"); }
+  if (exceptionOnly) return { spec: out, did };
+  if (/payload logging|log (?:the )?payloads?|\blogging\b/.test(t)) {
+    if (/(disable|turn off|remove|\bno |without|switch off)/.test(t)) { out.payload_logging = false; did.push("payload logging steps removed"); }
+    else { out.payload_logging = true; did.push("switchable payload logging added"); }
+  }
+  // rename
+  const rn = t.match(/\b(?:rename|call it|name it|iflow (?:id|name)\s*(?:to|=|as)?)\s+(?:the\s+iflow\s+)?(?:to\s+)?([a-z][\w-]{2,})/i);
+  if (rn) { const raw = text.match(new RegExp(rn[1].replace(/[-]/g, "\\-"), "i")); const id = (raw ? raw[0] : rn[1]).replace(/[^A-Za-z0-9_]/g, "_"); out.iflow_id = /^z/i.test(id) ? id : "Z_" + id; out.display_name = out.iflow_id.slice(2).replace(/_/g, " "); did.push("renamed to " + out.iflow_id); }
+  // timer
+  const every = t.match(/every\s+(\d+)\s*(min|minute|minutes|mins|hour|hours|hr|hrs)\b/), at = t.match(/\bat\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/);
+  if (/\b(remove|delete|drop|no)\s+(?:the\s+)?timer/.test(t)) { if (out.timer) { delete out.timer; did.push("timer removed"); } }
+  else if (every || /\bhourly\b|\bdaily\b|every day|nightly|\btimer\b|\bschedul/.test(t)) {
+    let tm;
+    if (every) tm = { type: "interval", every_minutes: +every[1] * (/^h/.test(every[2]) ? 60 : 1) };
+    else if (/\bhourly\b/.test(t)) tm = { type: "interval", every_minutes: 60 };
+    else { let hh = at ? +at[1] : 2; if (at && at[3] === "pm" && hh < 12) hh += 12; if (at && at[3] === "am" && hh === 12) hh = 0; tm = { type: "daily", time: String(Math.min(hh, 23)).padStart(2, "0") + ":" + (at && at[2] ? at[2] : "00") }; }
+    out.timer = Object.assign({ timezone: "UTC", body: (out.timer && out.timer.body) || "<Trigger/>" }, tm);
+    if (!out.sender) out.local_process = false;
+    did.push("timer " + (tm.type === "interval" ? "every " + tm.every_minutes + " min" : "daily " + tm.time + " UTC"));
+  }
+  // change sender / receiver adapter: "change sender to SFTP", "receiver should be OData", "use Kafka as receiver"
+  const findAd = (frag) => { for (const [re, snd, rcv, label] of NL_ADAPTERS) { re.lastIndex = 0; if (re.test(frag)) return { snd, rcv, label }; } return null; };
+  const sm = t.match(/\b(?:sender|source|inbound|trigger)\b(?:\s+adapter)?\s+(?:to|=|as|should be|is|from)\s+(?:an?\s+|the\s+)?([\w\/ .-]{2,30}?)(?=[,.;]| and | with |$| \s)/) || t.match(/\buse\s+(?:an?\s+)?([\w\/ .-]{2,20}?)\s+as\s+(?:the\s+)?sender/);
+  if (sm) { const ad = findAd(" " + sm[1] + " "); if (ad && ad.snd) { const old = out.sender || {}; out.sender = { adapter: ad.snd, system: ad.snd === "HTTPS" ? "API consumer" : ad.label };
+      const nm = (old.address || "/service").split("/").pop() || "service";
+      if (["HTTPS", "SOAP", "IDOC", "ProcessDirect", "AS2", "AS4", "XI", "OData", "SOAPRM"].includes(ad.snd)) out.sender.address = ({ HTTPS: "/api/v1/", SOAP: "/soap/", IDOC: "/idoc/", ProcessDirect: "/pd/" }[ad.snd] || "/" + ad.snd.toLowerCase() + "/") + nm;
+      did.push("sender adapter → " + ad.snd); } }
+  const rm = t.match(/\b(?:receiver|target|destination|outbound|backend)\b(?:\s+adapter)?\s+(?:to|=|as|should be|is)\s+(?:an?\s+|the\s+)?([\w\/ .-]{2,30}?)(?=[,.;]| and | with |$| \s)/) || t.match(/\buse\s+(?:an?\s+)?([\w\/ .-]{2,20}?)\s+as\s+(?:the\s+)?(?:receiver|target)/) || t.match(/\bsend\s+(?:it\s+|the\s+\w+\s+)?to\s+([\w\/ .-]{2,20}?)\s+instead/);
+  if (rm && (out.receivers || []).length) { const ad = findAd(" " + rm[1] + " "); if (ad && ad.rcv) { const r0 = out.receivers[out.receivers.length - 1];
+      out.receivers[out.receivers.length - 1] = { id: r0.id, adapter: ad.rcv, system: ad.label }; if (ad.rcv === "ProcessDirect") out.receivers[out.receivers.length - 1].address = "/pd/" + r0.id.toLowerCase();
+      did.push("receiver " + r0.id + " adapter → " + ad.rcv); } }
+  // add / remove palette steps: "add base64 encode", "add a groovy script", "remove the filter"
+  const topSteps = out.steps || (out.steps = []);
+  const STEP_WORDS = { groovy: /groovy|script/, xslt: /xslt|mapping/, filter: /filter/, content_modifier: /content modifier/, general_splitter: /splitter|split/, pgp_encrypt: /pgp encrypt|encrypt/, pgp_decrypt: /pgp decrypt|decrypt/, base64_encode: /base64 encod/, base64_decode: /base64 decod/, xml_to_json: /xml to json/, json_to_xml: /json to xml/, xml_validator: /validat/, datastore_write: /data ?store/, router: /router/, multicast: /multicast/ };
+  const rem = t.match(/\b(?:remove|delete|drop)\s+(?:the\s+|a\s+)?([\w ]{3,30}?)(?:\s+step)?(?=[,.;]| and |$|\s\s)/);
+  if (rem && !/timer|logging/.test(rem[1])) { for (const [ty, re] of Object.entries(STEP_WORDS)) { if (!re.test(rem[1])) continue;
+      const i = topSteps.findIndex((s) => s.type === ty || (ty === "general_splitter" && /splitter/.test(s.type))); if (i >= 0 && !["router", "multicast"].includes(ty)) { const g = topSteps.splice(i, 1)[0]; did.push("removed " + (g.name || ty)); } break; } }
+  if (/\b(add|insert|include|put|also|with)\b/.test(t)) {
+    const isEnd = (s) => ["send", "router", "multicast", "end_error", "end_escalation", "end_terminate"].includes(s.type);
+    for (const [re, mk] of NL_STEPS) { if (!mk) continue; const m = t.match(re); if (!m) continue; const st = mk(t); if (!st) continue;
+      if (rem && re.test(rem[1])) continue;
+      if (topSteps.some((s) => s.type === st.type)) {
+        if (st.type === "groovy" && /\b(add|insert)\b[^.;]{0,20}(groovy|script)/.test(t)) { let k = 2; while (topSteps.some((s) => s.script === "ProcessData" + k + ".groovy")) k++; st.script = "ProcessData" + k + ".groovy"; st.name = "Process data " + k; }
+        else if (st.type === "xslt" && /\b(add|insert)\b[^.;]{0,20}(xslt|mapping)/.test(t)) { let k = 2; while (topSteps.some((s) => s.mapping === "MM_Source_to_Target" + k)) k++; st.mapping = "MM_Source_to_Target" + k; st.name = "Mapping " + k; }
+        else continue;
+      }
+      const before = /\bbefore\s+(?:the\s+)?(?:send|call|request|mapping|xslt|groovy)/.test(t) ? topSteps.findIndex((s) => /send|request_reply|xslt|groovy/.test(s.type) && new RegExp("before\\s+(?:the\\s+)?" + (s.type === "request_reply" ? "(?:call|request)" : s.type === "send" ? "send" : s.type === "xslt" ? "(?:mapping|xslt)" : "groovy")).test(t)) : -1;
+      const afterSender = /\b(first|at the start|at the beginning|right after (?:the )?sender)\b/.test(t);
+      let idx = before >= 0 ? before : afterSender ? 0 : topSteps.length; if (!afterSender && before < 0) while (idx > 0 && isEnd(topSteps[idx - 1])) idx--;
+      topSteps.splice(idx, 0, st); did.push("added " + st.name);
+      if (st.type === "csv_to_xml" || st.type === "xml_validator") { const pth = st.type === "csv_to_xml" ? "xsd/Target.xsd" : "xsd/Schema.xsd"; out.resources = (out.resources || []).filter((r) => r.path !== pth).concat([{ path: pth, content: NL_XSD("root", "row") }]); }
+    }
   }
   return { spec: out, did };
 }
@@ -2411,7 +2464,7 @@ function localNew(text) {
   if (steps.some((s) => s.type === "xml_validator")) res.push({ path: "xsd/Schema.xsd", content: NL_XSD("root", "row") });
   if (res.length) spec.resources = res;
   if (/payload logging|log (?:the )?payloads?|\blogging\b|\blog (?:the )?messages?/.test(t) && !/(disable|without|no) (?:payload )?logging/.test(t)) { spec.payload_logging = true; did.push("payload logging"); }
-  const ex = localEdit(text, spec); if (ex.did.length) { Object.assign(spec, ex.spec); ex.did.forEach((d) => { if (!/payload logging/.test(d)) did.push(d); }); }
+  const ex = localEdit(text, spec, true); if (ex.did.length) { Object.assign(spec, ex.spec); ex.did.forEach((d) => { if (!/payload logging/.test(d)) did.push(d); }); }
   if (isMcp && sender && sender.snd === "HTTPS") {
     spec.api = { operation_id: toolName.replace(/_([a-z0-9])/g, (m, c) => c.toUpperCase()), tool_name: toolName, read_only: !toolWrite, idempotent: !toolWrite,
       tool_description: text.trim().replace(/\s+/g, " ").slice(0, 200), request_schema: { type: "object" }, response_schema: { type: "object" } };
@@ -2424,7 +2477,7 @@ function localNew(text) {
   spec.display_name = spec.iflow_id.slice(2).replace(/_/g, " ");
   return { spec, did, adapters: hits.length, understood: hits.length > 0 || found.length > 0 || !!timer };
 }
-window.__cpiLocalNew = localNew;
+window.__cpiLocalNew = localNew; window.__cpiLocalEdit = localEdit;
 async function aiRun(mode) {
   const text = $("#aiText").value.trim();
   if (!text) { aiResult("note", "Type what you want to change (or describe a new scenario) first."); return; }
@@ -2441,7 +2494,7 @@ async function aiRun(mode) {
       return;
     }
     const r = localEdit(text, state.spec);
-    if (!r.did.length) { aiResult("note", "I couldn't interpret that without Claude. Use the form below, or open this page on claude.ai signed in for free-text changes."); return; }
+    if (!r.did.length) { aiResult("note", "Offline mode didn't recognise that change. Try e.g. \"end successfully and return JSON error with 400\", \"add base64 encode before send\", \"change receiver to SFTP\", \"run every 30 minutes\" - or use the form below. " + (STANDALONE ? `<a href="${CLAUDE_URL}" target="_blank" rel="noopener">Open in Claude</a> (signed in) for any free-form change.` : `<a href="https://claude.ai/login" target="_blank" rel="noopener">Sign in to claude.ai</a>, then reopen this link for free-form changes.`)); return; }
     const err = validSpec(r.spec);
     if (err) { aiResult("err", h("That change doesn't build: " + err)); return; }
     state.undoSpec = before; state.spec = r.spec; state.example = ""; markExample(); renderForm(); await regenerate();
@@ -2470,6 +2523,13 @@ async function aiRun(mode) {
     state.undoSpec = before; state.spec = spec; state.example = ""; markExample(); renderForm(); await regenerate();
     aiResult("ok", (mode === "new" ? "New design: " : "Updated: ") + h((res && res.summary) || "spec applied") + " Review the diagram and the check before downloading.");
   } catch (e) {
+    // Claude unavailable for this call (declined, limits, network): try the offline interpreter before giving up
+    const off = mode === "new" ? localNew(text) : localEdit(text, before);
+    if ((mode === "new" ? off.understood : off.did.length) && !validSpec(off.spec)) {
+      state.undoSpec = before; state.spec = off.spec; state.example = ""; markExample(); renderForm(); await regenerate();
+      aiResult("ok", "Claude wasn't available (" + h((e && e.code) || "error") + "), so offline mode applied: " + h(off.did.join(mode === "new" ? " → " : "; ")) + ".");
+      return;
+    }
     aiResult("err", h(e && e.code === "rate_limited" ? "Too many requests; try again shortly." : e && e.code === "not_granted" ? "Claude access wasn't granted for this page." : "Couldn't apply the change: " + ((e && e.message) || "unknown error")));
   } finally { $("#aiUpdate").disabled = false; $("#aiNew").disabled = false; btn.textContent = label; }
 }
