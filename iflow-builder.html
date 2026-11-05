@@ -20,6 +20,7 @@
   --accent:#3cc29f; --accent-ink:#06231b; --accent-soft:#16352c; --pool:#121a17; --task:#1a2420;
   --err:#ff8a7f; --err-soft:#3a1d1a; --warn:#f0b75a; --warn-soft:#352914; --info:#86b3ec; --info-soft:#17283d; --ok:#6dd59a; --ok-soft:#163222; --msg:#e0a755;
   color-scheme:dark}}
+:root[data-theme="light"]{color-scheme:light}
 :root[data-theme="dark"]{
   --paper:#0e1412; --surface:#151d1a; --sunk:#1b2622; --ink:#e2ebe7; --muted:#90a39b; --line:#26332e; --line-strong:#38483f;
   --accent:#3cc29f; --accent-ink:#06231b; --accent-soft:#16352c; --pool:#121a17; --task:#1a2420;
@@ -35,6 +36,13 @@ header .wrap{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px 32px;padd
 .brand h1{font-family:var(--f-display);font-weight:700;font-size:26px;letter-spacing:-.01em;margin:0;display:flex;align-items:center;gap:10px;text-wrap:balance}
 .brand h1 svg{flex:none}
 .brand p{margin:0;color:var(--muted);max-width:62ch}
+.topact{flex:0 0 100%;display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:wrap;padding-top:10px}
+.topact a.claude{font-weight:600;font-size:13px;text-decoration:none;border:1px solid var(--accent);color:var(--accent);border-radius:4px;padding:6px 12px;display:inline-flex;align-items:center;gap:6px}
+.topact a.claude:hover{background:var(--accent-soft)}
+.hint a,#aiResult a{color:var(--accent);font-weight:600}
+.theme{display:inline-flex;border:1px solid var(--line-strong);border-radius:4px;overflow:hidden}
+.theme button{border:none;border-radius:0;padding:6px 10px;font-weight:500;color:var(--muted);background:var(--surface)}
+.theme button[aria-pressed="true"]{background:var(--accent-soft);color:var(--ink);font-weight:600}
 .ver{font-family:var(--f-mono);font-size:11px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:1px 8px;font-weight:400;letter-spacing:0}
 nav.tabs{display:flex;gap:2px;margin-left:auto;overflow-x:auto;max-width:100%}
 nav.tabs a{font-family:var(--f-display);font-weight:600;font-size:15px;color:var(--muted);text-decoration:none;padding:10px 14px 12px;border-bottom:3px solid transparent;white-space:nowrap}
@@ -173,6 +181,10 @@ footer a{color:var(--accent)}
 
 <header class="top">
   <div class="wrap">
+    <div class="topact">
+      <a class="claude" id="claudeLink" hidden target="_blank" rel="noopener" title="Opens this builder on claude.ai. Sign in with your own Claude account (free or paid) for free-form AI design and changes.">Sign in with Claude for AI mode ↗</a>
+      <div class="theme" role="group" aria-label="Theme"><button type="button" data-th="auto" aria-pressed="true">System</button><button type="button" data-th="light" aria-pressed="false">Light</button><button type="button" data-th="dark" aria-pressed="false">Dark</button></div>
+    </div>
     <div class="brand">
       <h1><svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><rect x="1" y="5" width="24" height="16" rx="2" fill="none" stroke="var(--accent)" stroke-width="2"/><circle cx="6" cy="13" r="2.5" fill="var(--accent)"/><rect x="10" y="10.5" width="7" height="5" rx="1" fill="var(--accent)"/><circle cx="21" cy="13" r="2.5" fill="none" stroke="var(--accent)" stroke-width="2"/></svg>SAP CPI iFlow Builder <span class="ver" id="ver"></span></h1>
       <p>Describe a scenario and download an importable SAP Cloud Integration iFlow ZIP, or upload one to find and fix errors. Everything runs in your browser.</p>
@@ -1805,7 +1817,8 @@ function browserDownload(filename, data) {
   setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
   toast("Downloaded " + filename);
 }
-const STANDALONE = !window.claude;   // hosted outside Claude (own website, GitHub Pages): plain browser downloads work
+const STANDALONE = !window.claude;
+const CLAUDE_URL = "https://claude.ai/artifact/KzcwwquaSCVAWid8xi2qzh";   // hosted outside Claude (own website, GitHub Pages): plain browser downloads work
 async function save(filename, data) {
   if (STANDALONE) { browserDownload(filename, data); return; }
   const d = await downloadsP;
@@ -2204,7 +2217,7 @@ let aiAvailable = false;
 sampleP.then((s) => {
   aiAvailable = !!s;
   if (s) { $("#aiNote").textContent = "Claude changes only what you ask; Undo restores the previous design."; $("#errAi").hidden = false; }
-  else { $("#aiNew").disabled = true; $("#aiNote").textContent = "Without Claude access (open on claude.ai, signed in) Update understands exception handling and payload logging requests; use the form for the rest."; }
+  else { $("#aiNote").innerHTML = "Offline mode, no sign-in: <b>Start a new design</b> understands systems/adapters, timers, converters, mapping, Groovy, splitters, router, multicast, PGP/PKCS#7, Base64/ZIP, Data Store and exception handling. <b>Update</b> understands exception handling and payload logging." + (STANDALONE ? ` For any free-form change, <a href="${CLAUDE_URL}" target="_blank" rel="noopener">open in Claude</a> (sign in, uses your own Claude plan).` : ""); }
 });
 function aiResult(kind, html) {
   const r = $("#aiResult"); r.hidden = false;
@@ -2220,7 +2233,8 @@ function localEdit(text, spec) {
   if (/exception|error|fail/.test(t)) {
     if (/escalat/.test(t)) { out.exception = { end: "escalation" }; did.push("exception subprocess ends with Escalation End"); }
     else if (/success|successful|message end|end normal|complete|normal end|not fail|don't fail|do not fail/.test(t) || /json|xml/.test(t)) {
-      const response = /json/.test(t) ? "json" : /xml/.test(t) ? "xml" : /status|http code|response code/.test(t) ? "status" : "none";
+      const em = t.match(/(?:error|exception|fault)\w*[^.;]{0,40}?\b(json|xml)\b|\b(json|xml)\b[^.;]{0,15}?(?:error|exception|fault)/);
+      const response = em ? (em[1] || em[2]) : /json/.test(t) ? "json" : /xml/.test(t) ? "xml" : /status|http code|response code/.test(t) ? "status" : "none";
       out.exception = { end: "message", response };
       if (response !== "none") out.exception.http_status = statusM ? +statusM[1] : ((spec.exception || {}).http_status || 500);
       did.push(`exception subprocess ends successfully (Message End)` + (response !== "none" ? ` and returns ${response === "status" ? "only the HTTP status" : "a " + response.toUpperCase() + " error body"} with HTTP ${out.exception.http_status}` : ""));
@@ -2232,13 +2246,200 @@ function localEdit(text, spec) {
   }
   return { spec: out, did };
 }
+// offline scenario parser: plain English -> new spec (no Claude needed)
+const NL_ADAPTERS = [
+  [/\bsuccess\s?factors\b|\bsfsf\b/g, null, "SuccessFactors", "SuccessFactors"],
+  [/\bodata\s?v4\b/g, "OData", "ODataV4", "OData V4 service"],
+  [/\bodata\b/g, "OData", "OData", "OData service"],
+  [/\bidocs?\b/g, "IDOC", "IDOC", "SAP S/4HANA"],
+  [/\bsoap\b|\bweb\s?services?\b/g, "SOAP", "SOAP", "SOAP service"],
+  [/\bsftp\b/g, "SFTP", "SFTP", "SFTP server"],
+  [/\bftp\b/g, "FTP", "FTP", "FTP server"],
+  [/\b(?:advanced\s)?event\s?mesh\b|\bamqp\b/g, "AMQP", "AMQP", "Event Mesh"],
+  [/\bkafka\b/g, "Kafka", "Kafka", "Kafka"],
+  [/\bjms\b/g, "JMS", "JMS", "JMS queue"],
+  [/\be-?mail\b|\bmail\b|\bsmtp\b|\bimap\b/g, "Mail", "Mail", "Mail"],
+  [/\bas2\b/g, "AS2", "AS2", "AS2 partner"],
+  [/\bas4\b/g, "AS4", "AS4", "AS4 partner"],
+  [/\bxi\b|\bpi\/po\b|\babap proxy\b/g, "XI", "XI", "SAP backend (XI)"],
+  [/\bjdbc\b|\bdatabase\b|\bsql\b/g, null, "JDBC", "Database"],
+  [/\brfc\b|\bbapi\b/g, null, "RFC", "SAP backend (RFC)"],
+  [/\bldap\b/g, null, "LDAP", "LDAP directory"],
+  [/\bariba\b/g, null, "Ariba", "SAP Ariba"],
+  [/\bprocess\s?direct\b/g, "ProcessDirect", "ProcessDirect", "Integration flow"],
+  [/\bhttps?\b|\brest\b|\bapis?\b|\bendpoint\b|\bwebhook\b/g, "HTTPS", "HTTP", "REST API"],
+];
+const NL_STEPS = [
+  [/\bjson\s*(?:to|->|→|2|into)\s*xml\b/, () => ({ type: "json_to_xml", name: "JSON to XML" })],
+  [/\bxml\s*(?:to|->|→|2|into)\s*json\b/, () => ({ type: "xml_to_json", name: "XML to JSON" })],
+  [/\bcsv\s*(?:to|->|→|2|into)\s*xml\b/, () => ({ type: "csv_to_xml", name: "CSV to XML" })],
+  [/\bxml\s*(?:to|->|→|2|into)\s*csv\b/, () => ({ type: "xml_to_csv", name: "XML to CSV" })],
+  [/\bedi(?:fact)?\s*(?:to|->|→|into)\s*xml\b/, () => ({ type: "edi_to_xml", name: "EDI to XML" })],
+  [/\bxml\s*(?:to|->|→|into)\s*edi/, () => ({ type: "xml_to_edi", name: "XML to EDI" })],
+  [/\bidoc\s*split|split\w*\s+(?:the\s+)?idocs?\b/, () => ({ type: "idoc_splitter", name: "Split IDocs" })],
+  [/\bsplit/, (t) => { const m = t.match(/split\w*\s+(?:by|on|per|into|each)\s+(?:each\s+)?([a-z_][\w]*)/); const f = m ? m[1].replace(/s$/, "") : "Item";
+      return { type: /iterat/.test(t) ? "iterating_splitter" : "general_splitter", name: "Split", expression: "//" + f.charAt(0).toUpperCase() + f.slice(1) }; }],
+  [/\bfilter/, () => ({ type: "filter", name: "Filter" })],
+  [/\bdecrypt/, (t) => /pkcs|cms|smime|s\/mime/.test(t) ? { type: "pkcs7_decrypt", name: "Decrypt" } : { type: "pgp_decrypt", name: "PGP decrypt" }],
+  [/\bverify|\bsignature verif/, (t) => /xml sig|xml digital/.test(t) ? { type: "xml_verify", name: "Verify signature" } : { type: "pkcs7_verify", name: "Verify signature" }],
+  [/\bbase64\s*decod|decod\w*\s+(?:the\s+)?base64/, () => ({ type: "base64_decode", name: "Base64 decode" })],
+  [/\bunzip|\bdecompress|\bgunzip/, (t) => /gzip|gunzip/.test(t) ? { type: "gzip_decompress", name: "GZIP decompress" } : { type: "zip_decompress", name: "Unzip" }],
+  [/\bxslt|\bmapping|\bmap\b|\btransform/, (t) => /groovy\s+(?:mapping|map|transform)/.test(t) ? null : { type: "xslt", name: "Mapping", mapping: "MM_Source_to_Target", template: /namespace/.test(t) ? "remove_namespaces" : "identity" }],
+  [/\bgroovy|\bscript\b/, () => ({ type: "groovy", name: "Process data", script: "ProcessData.groovy", template: "process_data" })],
+  [/\benrich|\blook\s?up\b/, null],
+  [/\baggregat/, () => ({ type: "aggregator", name: "Aggregate" })],
+  [/\bvalidat/, (t) => /\bedi/.test(t) ? { type: "edi_validator", name: "Validate EDI" } : { type: "xml_validator", name: "Validate XML" }],
+  [/\bdata\s?store|\bpersist|\bstore (?:the )?message/, () => ({ type: "datastore_write", name: "Store message" })],
+  [/\bwrite variable|\bglobal variable|\blast run/, () => ({ type: "write_variables", name: "Write variables", variables: [{ name: "LastRun", type: "expression", value: "${date:now:yyyy-MM-dd'T'HH:mm:ss}", global: false }] })],
+  [/\bdigest|\bhash|\bchecksum/, () => ({ type: "message_digest", name: "Message digest" })],
+  [/\bxml sign|\bsign\w*\s+(?:the\s+)?xml/, () => ({ type: "xml_sign", name: "Sign XML" })],
+  [/\bsign\b|\bsigned\b|\bsigning\b|digital signature/, (t) => /xml sign|sign\w*\s+(?:the\s+)?xml|verif/.test(t) ? null : { type: "pkcs7_sign", name: "Sign" }],
+  [/\bbase64\s*encod|encod\w*\s+(?:the\s+)?(?:\w+\s+)?(?:in|to|as)?\s*base64|\bbase64\b/, (t) => /base64\s*decod|decod\w*\s+(?:the\s+)?base64/.test(t) ? null : { type: "base64_encode", name: "Base64 encode" }],
+  [/\bgzip\b|\bcompress|\bzip\b/, (t) => /unzip|decompress|gunzip/.test(t) ? null : (/gzip/.test(t) ? { type: "gzip_compress", name: "GZIP compress" } : { type: "zip_compress", name: "Zip" })],
+  [/\bencrypt/, (t) => /pkcs|cms|smime|s\/mime/.test(t) ? { type: "pkcs7_encrypt", name: "Encrypt" } : { type: "pgp_encrypt", name: "PGP encrypt" }],
+];
+const nlTitle = (s) => s.replace(/\//g, "").replace(/[^A-Za-z0-9]+/g, " ").trim().split(" ").filter(Boolean).map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join("_");
+const NL_XSD = (root, row) => `<?xml version="1.0" encoding="UTF-8"?>\n<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">\n  <xs:element name="${root}">\n    <xs:complexType><xs:sequence>\n      <xs:element name="${row}" minOccurs="0" maxOccurs="unbounded">\n        <xs:complexType><xs:sequence><xs:any processContents="skip" minOccurs="0" maxOccurs="unbounded"/></xs:sequence></xs:complexType>\n      </xs:element>\n    </xs:sequence></xs:complexType>\n  </xs:element>\n</xs:schema>\n`;
+function localNew(text) {
+  const t = " " + text.toLowerCase().replace(/[“”]/g, '"').replace(/\s+/g, " ") + " ";
+  const mask = (str, re) => str.replace(re, (m) => " ".repeat(m.length));
+  const tm = mask(mask(t, /api[\s-]*(?:to|2)[\s-]*ai/g), /\bai[\s-]tools?\b|\bmcp\b/g);
+  const did = [];
+  // adapters in the order they appear
+  let hits = [];
+  for (const [re, snd, rcv, label] of NL_ADAPTERS) { re.lastIndex = 0; let m; while ((m = re.exec(tm))) {
+    if (hits.some((x) => m.index < x.end && m.index + m[0].length > x.start)) continue;
+    hits.push({ start: m.index, end: m.index + m[0].length, snd, rcv, label }); } }
+  hits.sort((a, b) => a.start - b.start);
+  const LINK = /\b(to|into|call\w*|send\w*|post\w*|then|and|or|both|push\w*)\b|,|->|→/;
+  hits = hits.filter((x, i) => !(i && hits[i - 1].rcv === x.rcv && !LINK.test(t.slice(hits[i - 1].end, x.start))));   // "REST API", "https endpoint" = one mention
+  // timer
+  let timer = null;
+  const every = t.match(/every\s+(\d+)\s*(min|minute|minutes|mins|hour|hours|hr|hrs)\b/);
+  const at = t.match(/\bat\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/);
+  if (every) timer = { type: "interval", every_minutes: +every[1] * (/^h/.test(every[2]) ? 60 : 1) };
+  else if (/\bhourly\b|every hour/.test(t)) timer = { type: "interval", every_minutes: 60 };
+  else if (/\bdaily\b|every day|nightly|every night|each day/.test(t) || (/\btimer|schedul/.test(t) && at)) {
+    let hh = at ? +at[1] : 2; if (at && at[3] === "pm" && hh < 12) hh += 12; if (at && at[3] === "am" && hh === 12) hh = 0;
+    timer = { type: "daily", time: String(Math.min(hh, 23)).padStart(2, "0") + ":" + (at && at[2] ? at[2] : "00") };
+  } else if (/\brun once\b/.test(t) || (/\bonce\b/.test(t) && /timer|schedul/.test(t))) timer = { type: "once" };
+  else if (/\btimer|schedul|\bbatch job|\bperiodic/.test(t)) timer = { type: "daily", time: "02:00" };
+  const isMcp = /\bmcp\b|\bai[\s-]tools?\b|\bagent|api[\s-]*(?:to|2)[\s-]*ai|\bjoule\b/.test(t);
+  // sender vs receivers
+  let sender = null, recvHits = hits.slice();
+  const pollable = ["SFTP", "FTP", "Mail", "JMS", "Kafka", "AMQP"];
+  const SRC = /(from|call\w*|pull\w*|fetch\w*|read\w*|get\w*|query\w*|quer(?:y|ies)|extract\w*|select\w*|look\w*\s?up|lookup|retriev\w*|download\w*)\s+(?:[\w\/.-]+\s+){0,4}$/;
+  const TGT = /(to|into|send\w*|post\w*|push\w*|write\w*|upload\w*|load\w*|create\w*|update\w*|publish\w*|forward\w*)\s+(?:[\w\/.-]+\s+){0,3}$/;
+  if (hits.length) {
+    const first = hits[0], before = t.slice(Math.max(0, first.start - 40), first.start);
+    const fromCue = /(from|poll\w*|pick\w*\s+up(?:\s+\w+)?\s+from|listen\w*\s+(?:to|on)|consum\w*(?:\s+\w+)?\s+from|receiv\w*(?:\s+\w+)*\s+(?:from|via|over)|inbound|expos\w*(?:\s+\w+)?)\s+(?:an?\s+|the\s+)?(?:[\w\/.-]+\s+)?$/.test(before);
+    const pullCue = /(pull\w*|fetch\w*|read\w*|get\w*|query\w*|extract\w*|select\w*|retriev\w*|download\w*|call\w*)\s+(?:[\w\/.-]+\s+){0,4}$/.test(before);
+    const toCue = TGT.test(before);
+    if (isMcp) { /* MCP / API-to-AI tools are always called over HTTPS by the MCP Gateway */ }
+    else if (timer) {
+      if (first.snd && pollable.includes(first.snd) && /(poll\w*|pick\w*\s+up|listen|consum|read\w*\s+(?:\w+\s+)?from|from)/.test(before)) { sender = first; recvHits = hits.slice(1); timer = null; did.push("polling " + first.snd + " sender"); }
+    } else if (first.snd && (fromCue || !(toCue || pullCue) || hits.length > 1) && !(pullCue && !fromCue) && !(toCue && !fromCue && hits.length === 1)) { sender = first; recvHits = hits.slice(1); }
+  }
+  const spec = { iflow_id: "", display_name: "", version: "1.0.0", description: text.trim().replace(/\s+/g, " ").slice(0, 240), steps: [], receivers: [] };
+  if (timer) { timer.timezone = "UTC"; timer.body = "<Trigger/>"; spec.timer = timer; spec.local_process = false; did.push("timer (" + (timer.type === "interval" ? "every " + timer.every_minutes + " min" : timer.type === "daily" ? "daily " + timer.time + " UTC" : "run once") + ")"); }
+  else if (!sender) sender = { snd: "HTTPS", label: "API consumer", start: -1 };
+  const slug = (s) => s.toLowerCase().replace(/\//g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  // MCP / API-to-AI tool name: verb + object ("look up sales order" -> get_sales_order)
+  let toolName = "", toolWrite = /\b(create|post|update|change|delete|cancel|approve|submit)\w*/.test(t);
+  if (isMcp) { const tt = /\btools?\b/.test(t) ? t.slice(t.search(/\btools?\b/)) : t; const m = tt.match(/\b(look\s?up|get|read|fetch|find|search|check|create|update|cancel|approve|list|retrieve)\w*\s+((?:(?!from|in|by|via|for|with|using|on|to|and)[a-z0-9]+\s+){1,3})/);
+    const verb = m ? (/look|get|read|fetch|find|retrieve|check/.test(m[1]) ? "get" : m[1].replace(/\s/g, "")) : "get";
+    toolName = (verb + "_" + (m ? m[2].trim().replace(/\b(an?|the|sap|s4|s\/4hana|odata|api|data|details)\b/g, "").trim().replace(/\s+/g, "_") : "data")).replace(/_+$/, "") || "get_data"; }
+  if (sender) {
+    const sa = sender.snd;
+    spec.sender = { adapter: sa, system: sa === "HTTPS" ? (isMcp ? "MCP Gateway" : "API consumer") : sender.label };
+    const nm = slug(isMcp ? toolName : (recvHits.length ? recvHits[recvHits.length - 1].label : "service")) || "service";
+    if (sa === "HTTPS") spec.sender.address = (isMcp ? "/mcp/tools/" : "/api/v1/") + nm;
+    else if (sa === "SOAP") spec.sender.address = "/soap/" + nm;
+    else if (sa === "IDOC") spec.sender.address = "/idoc/" + nm;
+    else if (sa === "ProcessDirect") spec.sender.address = "/pd/" + nm;
+    else if (["AS2", "AS4", "XI", "OData", "SOAPRM"].includes(sa)) spec.sender.address = "/" + sa.toLowerCase() + "/" + nm;
+    did.push((isMcp && sa === "HTTPS" ? "MCP tool endpoint (HTTPS)" : sa) + " sender");
+  }
+  const sync = !!sender && (sender.snd === "HTTPS" || sender.snd === "SOAP") && (isMcp || /\b(return\w*|respon\w*|repl\w*|synchron\w*|sync|back to (?:the )?(?:caller|sender|client|trigger)|lookup|look up)\b/.test(t));
+  if (sync) { spec.return_exception_to_sender = true; if (sender.snd === "SOAP") spec.sender.pattern = "RequestReply"; }
+  // receivers: sources (pulled data) vs targets (where the result goes)
+  const used = {};
+  const recv = recvHits.map((x, i) => {
+    let id = x.rcv.toUpperCase().replace(/[^A-Z0-9]/g, ""); used[id] = (used[id] || 0) + 1; if (used[id] > 1) id += used[id];
+    const before = t.slice(Math.max(0, x.start - 40), x.start);
+    const source = (!sender && i === 0 && recvHits.length > 1 && !TGT.test(before)) || (SRC.test(before) && !TGT.test(before.slice(-14)));
+    const r = { id, adapter: x.rcv, system: x.label };
+    if (x.rcv === "HTTP") r.method = source || (isMcp && !toolWrite) ? "GET" : "POST";
+    if (["OData", "ODataV4", "SuccessFactors"].includes(x.rcv) && !source && !sync) r.operation = x.rcv === "OData" ? "Create(POST)" : "POST";
+    if (x.rcv === "ProcessDirect") r.address = "/pd/" + slug(x.label) + (used[id] > 1 ? "-" + used[id] : "");
+    return { r, at: x.start, source };
+  });
+  recv.forEach((x) => { if (x.r.operation === "Create(POST)" || x.r.operation === "POST") delete x.r.operation; });   // keep engine defaults; analyzer-safe
+  spec.receivers = recv.map((x) => x.r);
+  // processing steps + pulls/sync calls, in the order they are mentioned
+  const found = [];
+  for (const [re, mk] of NL_STEPS) { if (!mk) continue; const m = t.match(re); if (!m) continue; const st = mk(t); if (!st) continue;
+    if (found.some((f) => f.st.type === st.type)) continue; found.push({ at: m.index, st }); }
+  if (found.some((f) => /_to_/.test(f.st.type)) && !/\bxslt|\bmapping|\bmap\b/.test(t)) for (let i = found.length - 1; i >= 0; i--) if (found[i].st.type === "xslt") found.splice(i, 1);
+  const rr = (r) => ({ type: "request_reply", name: (r.method === "GET" || sync ? "Call " : "Call ") + r.system, receiver: r.id });
+  const snd = (r) => ({ type: "send", name: "Send to " + r.system, receiver: r.id });
+  const targets = [];
+  for (const x of recv) { if (x.source || sync) found.push({ at: x.at, st: rr(x.r) }); else targets.push(x.r); }
+  found.sort((a, b) => a.at - b.at);
+  const steps = found.map((f) => f.st);
+  steps.forEach((s) => did.push(s.name));
+  if (targets.length > 1 && /\brout|based on|depending on|\bif\b|\bwhen\b|condition/.test(t)) {
+    const fm = t.match(/(?:based on|depending on|route\w*\s+(?:\w+\s+)?by|by|on)\s+(?:the\s+)?([a-z_][\w]*)/); const field = fm && !/^(the|a|an|each|every|country\b)?$/.test(fm[1]) || (fm && fm[1] === "country") ? fm[1].charAt(0).toUpperCase() + fm[1].slice(1) : "Type";
+    const routes = targets.map((r, i) => i === targets.length - 1
+      ? { name: "Default", default: true, steps: [snd(r)] }
+      : { name: "Route " + (i + 1), condition: "//" + field + " = 'VALUE" + (i + 1) + "'", expression_type: "XML", steps: [snd(r)] });
+    steps.push({ type: "router", name: field + "?", routes });
+    did.push("router on " + field + " → " + targets.map((r) => r.system).join(" / ") + " (set the condition values)");
+  } else if (targets.length > 1 && /\bthen\b|\bafter that\b|\bsequential\w*\b|\bfollowed by\b/.test(t) && !/\bmulticast|\bparallel|\bfan\s?out|\bboth\b|\ball\b/.test(t)) {
+    targets.forEach((r, i) => { const st = i === targets.length - 1 ? snd(r) : rr(r); steps.push(st); did.push(st.name); });
+  } else if (targets.length > 1) {
+    const mode = /sequential/.test(t) ? "sequential" : "parallel";
+    steps.push({ type: "multicast", name: "Fan out", mode, merge: false, branches: targets.map((r) => ({ name: r.system, steps: [snd(r)] })) });
+    did.push(mode + " multicast → " + targets.map((r) => r.system).join(" + "));
+  } else if (targets.length === 1) { const st = snd(targets[0]); steps.push(st); did.push(st.name); }
+  if (!steps.length) { steps.push({ type: "content_modifier", name: "Prepare message", headers: [{ name: "SAP_ApplicationID", type: "expression", value: "${header.SAP_MessageProcessingLogID}" }] }); did.push("Prepare message"); }
+  if (sync && !steps.some((s) => s.type === "groovy") && steps.some((s) => s.type === "request_reply") && (isMcp || /json/.test(t))) { steps.push({ type: "groovy", name: "Check response", script: "ResponseHandler.groovy", template: "http_response_handler" }); did.push("Check response"); }
+  spec.steps = steps;
+  // schemas the converter/validator reference
+  const res = [];
+  if (steps.some((s) => s.type === "csv_to_xml")) res.push({ path: "xsd/Target.xsd", content: NL_XSD("root", "row") });
+  if (steps.some((s) => s.type === "xml_validator")) res.push({ path: "xsd/Schema.xsd", content: NL_XSD("root", "row") });
+  if (res.length) spec.resources = res;
+  if (/payload logging|log (?:the )?payloads?|\blogging\b|\blog (?:the )?messages?/.test(t) && !/(disable|without|no) (?:payload )?logging/.test(t)) { spec.payload_logging = true; did.push("payload logging"); }
+  const ex = localEdit(text, spec); if (ex.did.length) { Object.assign(spec, ex.spec); ex.did.forEach((d) => { if (!/payload logging/.test(d)) did.push(d); }); }
+  if (isMcp && sender && sender.snd === "HTTPS") {
+    spec.api = { operation_id: toolName.replace(/_([a-z0-9])/g, (m, c) => c.toUpperCase()), tool_name: toolName, read_only: !toolWrite, idempotent: !toolWrite,
+      tool_description: text.trim().replace(/\s+/g, " ").slice(0, 200), request_schema: { type: "object" }, response_schema: { type: "object" } };
+    spec.payload_logging_default = false; did.push("openapi.json + mcp_tool.json for the MCP Gateway");
+  }
+  const src = timer ? "Timer" : isMcp && sender.snd === "HTTPS" ? "MCP" : (spec.sender.system === "API consumer" ? (sender.snd === "SOAP" ? "SOAP" : "API") : sender.label);
+  const dstR = targets.length ? targets : spec.receivers;
+  const dst = isMcp && toolName ? toolName : dstR.length > 1 ? "Multi" : dstR.length ? dstR[dstR.length - 1].system : "Response";
+  spec.iflow_id = ("Z_" + nlTitle(src) + "_" + (isMcp ? "" : "To_") + nlTitle(dst)).slice(0, 60).replace(/_+$/, "");
+  spec.display_name = spec.iflow_id.slice(2).replace(/_/g, " ");
+  return { spec, did, adapters: hits.length, understood: hits.length > 0 || found.length > 0 || !!timer };
+}
+window.__cpiLocalNew = localNew;
 async function aiRun(mode) {
   const text = $("#aiText").value.trim();
   if (!text) { aiResult("note", "Type what you want to change (or describe a new scenario) first."); return; }
   const s = await sampleP;
   const before = JSON.parse(JSON.stringify(state.spec));
   if (!s) {
-    if (mode === "new") return;
+    if (mode === "new") {
+      const n = localNew(text);
+      if (!n.understood) { aiResult("note", "I couldn't find systems or steps in that. Name them, e.g. \"SFTP to S/4HANA IDoc, CSV to XML, split by Order, PGP decrypt\"."); return; }
+      const err = validSpec(n.spec);
+      if (err) { aiResult("err", h("That scenario doesn't build: " + err)); return; }
+      state.undoSpec = before; state.spec = n.spec; state.example = ""; markExample(); renderForm(); await regenerate();
+      aiResult("ok", "New design: " + h(n.did.join(" → ")) + ". Hosts, credentials and conditions are placeholders - set them in the form below." + (STANDALONE ? ` For free-form AI changes, <a href="${CLAUDE_URL}" target="_blank" rel="noopener">open in Claude</a>.` : ""));
+      return;
+    }
     const r = localEdit(text, state.spec);
     if (!r.did.length) { aiResult("note", "I couldn't interpret that without Claude. Use the form below, or open this page on claude.ai signed in for free-text changes."); return; }
     const err = validSpec(r.spec);
@@ -2270,7 +2471,7 @@ async function aiRun(mode) {
     aiResult("ok", (mode === "new" ? "New design: " : "Updated: ") + h((res && res.summary) || "spec applied") + " Review the diagram and the check before downloading.");
   } catch (e) {
     aiResult("err", h(e && e.code === "rate_limited" ? "Too many requests; try again shortly." : e && e.code === "not_granted" ? "Claude access wasn't granted for this page." : "Couldn't apply the change: " + ((e && e.message) || "unknown error")));
-  } finally { $("#aiUpdate").disabled = false; $("#aiNew").disabled = !aiAvailable; btn.textContent = label; }
+  } finally { $("#aiUpdate").disabled = false; $("#aiNew").disabled = false; btn.textContent = label; }
 }
 $("#aiUpdate").addEventListener("click", () => aiRun("update"));
 $("#aiNew").addEventListener("click", () => aiRun("new"));
@@ -2387,7 +2588,19 @@ function confPill(c) { const ok = /SAP standard content/.test(c); return `<span 
 markExample(); renderForm(); regenerate(); explain(); renderTpl();
 runAnalyze("ZPROBE_3C_Full.zip", sampleBytes(), true);
 downloadsP.then((d) => { if (!d && !STANDALONE) { $("#dlZip").title = "Opens a panel to save the ZIP another way"; } });
-if (STANDALONE) $("#tplDl").textContent = "Download";
+if (STANDALONE) { $("#tplDl").textContent = "Download"; const cl = $("#claudeLink"); cl.href = CLAUDE_URL; cl.hidden = false; }
+/* theme: System (follows the OS) / Light / Dark, remembered per browser */
+(function () {
+  const root = document.documentElement, host = root.getAttribute("data-theme");
+  let pref = "auto"; try { pref = localStorage.getItem("cpiTheme") || "auto"; } catch (e) {}
+  const apply = (v) => {
+    if (v === "auto") { if (STANDALONE || !host) root.removeAttribute("data-theme"); else root.setAttribute("data-theme", host); }
+    else root.setAttribute("data-theme", v);
+    document.querySelectorAll(".theme button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.th === v)));
+  };
+  apply(pref);
+  document.querySelectorAll(".theme button").forEach((b) => b.addEventListener("click", () => { pref = b.dataset.th; try { localStorage.setItem("cpiTheme", pref); } catch (e) {} apply(pref); }));
+})();
 })();
 </script>
 </body></html>
