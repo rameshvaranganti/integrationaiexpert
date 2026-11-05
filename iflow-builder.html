@@ -36,6 +36,7 @@ header .wrap{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px 32px;padd
 .brand h1{font-family:var(--f-display);font-weight:700;font-size:26px;letter-spacing:-.01em;margin:0;display:flex;align-items:center;gap:10px;text-wrap:balance}
 .brand h1 svg{flex:none}
 .brand p{margin:0;color:var(--muted);max-width:62ch}
+.dlhelp{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:60;display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:var(--surface);color:var(--ink);border:1px solid var(--line-strong);border-radius:8px;padding:10px 12px;box-shadow:0 6px 24px rgba(0,0,0,.18);max-width:calc(100vw - 32px)}
 .topact{flex:0 0 100%;display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:wrap;padding-top:10px}
 .topact a.claude{font-weight:600;font-size:13px;text-decoration:none;border:1px solid var(--accent);color:var(--accent);border-radius:4px;padding:6px 12px;display:inline-flex;align-items:center;gap:6px}
 .topact a.claude:hover{background:var(--accent-soft)}
@@ -380,6 +381,7 @@ The MPL ID for the failed message is : AGVJ1xyz...</textarea>
     </div>
   </div>
 </footer>
+<div id="dlHelp" class="dlhelp" role="status" hidden><span>Downloading <b id="dlHelpName"></b>. Not in your Downloads folder?</span><button type="button" id="dlHelpAlt">Other ways to save</button><button type="button" class="ghost" id="dlHelpX" aria-label="Dismiss">✕</button></div>
 <div class="toast" id="toast" role="status" hidden></div>
 <div class="sheet-back" id="saveSheet" hidden><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="saveTitle">
   <div class="ph"><h2 id="saveTitle">Save the file another way</h2><button type="button" class="ghost" id="saveClose">Close</button></div>
@@ -1822,7 +1824,17 @@ const CLAUDE_URL = "https://claude.ai/artifact/KzcwwquaSCVAWid8xi2qzh";   // hos
 async function save(filename, data) {
   if (STANDALONE) { browserDownload(filename, data); return; }
   const d = await downloadsP;
-  if (!d) { await saveFallback(filename, data); return; }
+  if (!d) {
+    // Claude's download bridge isn't offered in this view: try a normal browser download first,
+    // and keep the copy-as-text route one click away in case this view blocks downloads.
+    try { browserDownload(filename, data); } catch (e) {}
+    const bar = $("#dlHelp"); bar.hidden = false;
+    $("#dlHelpName").textContent = filename;
+    $("#dlHelpAlt").onclick = () => { bar.hidden = true; saveFallback(filename, data); };
+    $("#dlHelpX").onclick = () => { bar.hidden = true; };
+    clearTimeout(save._t); save._t = setTimeout(() => { bar.hidden = true; }, 15000);
+    return;
+  }
   try { const r = await d.save({ filename, data }); if (r && r.status === "saved") toast("Saved " + filename); }
   catch (e) {
     if (e && e.code === "declined") return;
