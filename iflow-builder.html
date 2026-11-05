@@ -36,6 +36,8 @@ header .wrap{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px 32px;padd
 .brand h1{font-family:var(--f-display);font-weight:700;font-size:26px;letter-spacing:-.01em;margin:0;display:flex;align-items:center;gap:10px;text-wrap:balance}
 .brand h1 svg{flex:none}
 .brand p{margin:0;color:var(--muted);max-width:62ch}
+.btnlink{font-weight:600;font-size:13px;text-decoration:none;border-radius:4px;padding:7px 12px;background:var(--accent);color:var(--accent-ink);white-space:nowrap}
+.dlmsg{flex:1 1 220px}
 .dlhelp{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:60;display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:var(--surface);color:var(--ink);border:1px solid var(--line-strong);border-radius:8px;padding:10px 12px;box-shadow:0 6px 24px rgba(0,0,0,.18);max-width:calc(100vw - 32px)}
 .topact{flex:0 0 100%;display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:wrap;padding-top:10px}
 .topact a.claude{font-weight:600;font-size:13px;text-decoration:none;border:1px solid var(--accent);color:var(--accent);border-radius:4px;padding:6px 12px;display:inline-flex;align-items:center;gap:6px}
@@ -381,7 +383,7 @@ The MPL ID for the failed message is : AGVJ1xyz...</textarea>
     </div>
   </div>
 </footer>
-<div id="dlHelp" class="dlhelp" role="status" hidden><span>Downloading <b id="dlHelpName"></b>. Not in your Downloads folder?</span><button type="button" id="dlHelpAlt">Other ways to save</button><button type="button" class="ghost" id="dlHelpX" aria-label="Dismiss">✕</button></div>
+<div id="dlHelp" class="dlhelp" role="status" hidden><span class="dlmsg">Downloading <b id="dlHelpName"></b>. Not in your Downloads folder?</span><a class="btnlink" id="dlHelpWeb" target="_blank" rel="noopener" hidden>Download via website ↗</a><button type="button" id="dlHelpAlt">Other ways to save</button><button type="button" class="ghost" id="dlHelpX" aria-label="Dismiss">✕</button></div>
 <div class="toast" id="toast" role="status" hidden></div>
 <div class="sheet-back" id="saveSheet" hidden><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="saveTitle">
   <div class="ph"><h2 id="saveTitle">Save the file another way</h2><button type="button" class="ghost" id="saveClose">Close</button></div>
@@ -1821,13 +1823,38 @@ function browserDownload(filename, data) {
 }
 const STANDALONE = !window.claude;
 const CLAUDE_URL = "https://claude.ai/artifact/KzcwwquaSCVAWid8xi2qzh";   // hosted outside Claude (own website, GitHub Pages): plain browser downloads work
+const WEBSITE_URL = "https://rameshvaranganti.github.io/integrationaiexpert/iflow-builder.html";
+const b64u = (bytes) => { let s = ""; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000)); return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""); };
+const unb64u = (str) => Uint8Array.from(atob(str.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((str.length + 3) % 4)), (c) => c.charCodeAt(0));
+async function pipeBytes(bytes, stream) { const r = new Response(new Blob([bytes]).stream().pipeThrough(stream)); return new Uint8Array(await r.arrayBuffer()); }
+async function specToHash(spec) {
+  const raw = new TextEncoder().encode(JSON.stringify(spec));
+  if (typeof CompressionStream === "function") { try { return "z." + b64u(await pipeBytes(raw, new CompressionStream("deflate-raw"))); } catch (e) {} }
+  return "j." + b64u(raw);
+}
+async function hashToSpec(h) {
+  const kind = h.slice(0, 2), bytes = unb64u(h.slice(2));
+  const raw = kind === "z." ? await pipeBytes(bytes, new DecompressionStream("deflate-raw")) : bytes;
+  return JSON.parse(new TextDecoder().decode(raw));
+}
 async function save(filename, data) {
   if (STANDALONE) { browserDownload(filename, data); return; }
   const d = await downloadsP;
   if (!d) {
     // Claude's download bridge isn't offered in this view: try a normal browser download first,
     // and keep the copy-as-text route one click away in case this view blocks downloads.
+    // stay in the page: try the browser's own Save dialog, then a plain download
+    if (typeof window.showSaveFilePicker === "function") {
+      try {
+        const ext = filename.split(".").pop().toLowerCase();
+        const h = await window.showSaveFilePicker({ suggestedName: filename, types: [{ description: ext.toUpperCase() + " file", accept: { [MIME[ext] || "application/octet-stream"]: ["." + ext] } }] });
+        const w = await h.createWritable(); await w.write(new Blob([data])); await w.close();
+        toast("Saved " + filename); return;
+      } catch (e) { if (e && e.name === "AbortError") return; /* SecurityError etc.: not allowed in this view */ }
+    }
     try { browserDownload(filename, data); } catch (e) {}
+    $("#dlHelp .dlmsg").innerHTML = 'Downloading <b id="dlHelpName"></b>. Not in your Downloads folder?';
+    $("#dlHelpWeb").hidden = true;
     const bar = $("#dlHelp"); bar.hidden = false;
     $("#dlHelpName").textContent = filename;
     $("#dlHelpAlt").onclick = () => { bar.hidden = true; saveFallback(filename, data); };
@@ -2658,8 +2685,18 @@ function confPill(c) { const ok = /SAP standard content/.test(c); return `<span 
 
 /* ---------- boot ---------- */
 markExample(); renderForm(); regenerate(); explain(); renderTpl();
+(async () => {
+  const m = location.hash.match(/[#&]spec=([^&]+)/);
+  if (!m) return;
+  try {
+    state.spec = await hashToSpec(m[1]); state.example = ""; markExample(); renderForm(); await regenerate();
+    const auto = /[#&]dl=1\b/.test(location.hash);
+    history.replaceState(null, "", location.pathname + location.search);
+    if (auto && state.result) { save(state.result.g.id + ".zip", state.result.zip.slice(0)); toast("Your design opened here and " + state.result.g.id + ".zip was downloaded."); }
+  } catch (e) { toast("Couldn't open the shared design from the link."); }
+})();
 runAnalyze("ZPROBE_3C_Full.zip", sampleBytes(), true);
-downloadsP.then((d) => { if (!d && !STANDALONE) { $("#dlZip").title = "Opens a panel to save the ZIP another way"; } });
+downloadsP.then((d) => { if (!d && !STANDALONE) { $("#dlZip").title = "Saves the ZIP from your browser"; } });
 if (STANDALONE) { $("#tplDl").textContent = "Download"; const cl = $("#claudeLink"); cl.href = CLAUDE_URL; cl.hidden = false; }
 /* theme: System (follows the OS) / Light / Dark, remembered per browser */
 (function () {
